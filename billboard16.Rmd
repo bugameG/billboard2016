@@ -1,0 +1,616 @@
+---
+title: 'Billboard Hot 100: 2016'
+output:
+  flexdashboard::flex_dashboard:
+    theme:
+      bg: '#F7CAC9'
+      fg: '#000000'
+      primary: '#000000'
+      secondary: '#0072B2'
+      base_font: Roboto
+      code_font: Pacifico
+      orientation: columns
+    vertical_layout: fill
+    favicon: PSX_20250129_181133.jpg
+runtime: shiny
+resource_files:
+- billboard2016.R
+---
+
+```{r setup, include=FALSE}
+# logo: PSX_20250129_181133.jpg
+library(knitr)
+opts_chunk$set(message=FALSE, warning=FALSE, tidy.opts = list(width.cutoff=60))
+# "#1f77b4","#17BECF","#2CA02C","#D62728","#9467BD",
+# "#FF6F61","#6B5B95","#88B04B","#F7CAC9","#92A8D1","#955251",
+# "#45B8AC",
+# "#E69F00","#56B4E9","#009E73","#F0E442","#0072B2","#D55E00","#CC79A7"
+# font_collection(font_google("Pacifico", local = FALSE), "Roboto", "sans-serif")
+suppressPackageStartupMessages(library(flexdashboard))
+suppressPackageStartupMessages(library(shinydashboard))
+suppressPackageStartupMessages(library(plotly))
+suppressPackageStartupMessages(library(dygraphs))
+suppressPackageStartupMessages(library(ggcorrplot))
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(shiny))
+suppressPackageStartupMessages(library(xtable))
+suppressPackageStartupMessages(library(ggthemes))
+suppressPackageStartupMessages(library(bslib))
+suppressPackageStartupMessages(library(thematic))
+suppressPackageStartupMessages(library(prettyunits))
+suppressPackageStartupMessages(library(DT))
+
+theme_set(
+  theme_clean()
+  )
+
+thematic_on(bg = "auto", 
+            fg = "auto",
+            accent = "auto",
+            font = "auto")
+
+
+# LOADING 2016 DATA
+bb16 <- read_csv("chart2016.csv")
+
+```
+
+# Introduction {data-orientation="rows"}
+
+## Row
+
+### 
+
+2016 was a pivotal year for urban music. New artists stepped onto the limelight and familiar favorites asserted their dominance. We got to witness the rise of streaming platforms and genre fusion. Global hits emerged from pop, hiphop, dancehall and EDM genres.
+
+This dashboard takes a look at the songs that made the Hot 100 in 2016. The goal is to give desciptive information on the songs that made it to the weekly charts and uncover meaningful patterns
+
+## Row
+
+### 
+
+```{r}
+include_graphics("Drake.jpg")
+```
+
+> Drake
+
+### 
+
+```{r}
+include_graphics("CC.jpg")
+```
+
+> Camila Cabello
+
+### 
+
+```{r}
+include_graphics("JB.jpg")
+```
+
+> Justin Bieber
+
+### 
+
+```{r}
+include_graphics("Rihanna.jpg")
+```
+
+> Rihanna
+
+# Periodic {data-orientation="rows" data-navmenu="Charts"}
+
+## Row {.tabset .tabset-fade}
+
+### Weekly
+
+```{r}
+fluidRow(
+  column(width=12,
+      selectInput("weekID","Hot 100 for the week of:",unique(bb16$date)),
+      renderDT({
+      bb16 |>
+        select(week,rank,date,artist,song) |>
+        filter(date==input$weekID) |>
+        datatable()
+    })
+  )
+)
+
+```
+
+### Monthly
+
+```{r}
+fluidRow(
+  column(width=12,
+      selectInput("monthID","Hot 100 for the month:",
+                  c("January"=1,"February"=2,"March"=3,
+                    "April"=4,"May"=5,"June"=6,
+                    "July"=7,"August"=8,"September"=9,
+                    "October"=10,"November"=11,"December"=12)),
+      renderDataTable({
+      bb16 |>
+        filter(month == input$monthID) |> 
+        group_by(song, artist) |>
+        summarise(Rank = median(rank)) |> 
+        arrange(Rank) |> 
+        ungroup() |> 
+        mutate(song_rank = rank(Rank, ties.method = "random")) |> 
+        select(-Rank) |> 
+        arrange(song_rank) |> 
+        relocate(song_rank, .before = song) |> 
+        slice_head(n=100) |> 
+        datatable()
+
+    }),br()
+  )
+)
+
+
+```
+
+### Annual
+
+```{r}
+bb16 |> 
+  group_by(song, artist) |>
+  summarise(Rank = median(rank)) |> 
+  arrange(Rank) |> 
+  ungroup() |> 
+  mutate(song_rank = rank(Rank, ties.method = "random")) |> 
+  select(-Rank) |> 
+  arrange(song_rank) |> 
+  relocate(song_rank, .before = song) |>
+  slice_head(n=100) |> 
+  datatable()
+      
+```
+
+# Longevity {data-orientation="rows" data-navmenu="Charts"}
+
+## Row {.tabset .tabset-fade}
+
+### Top 20
+
+```{r}
+top20 <<- bb16 |> 
+            filter(rank%in%c(1:20)) |> 
+            select(artist,song,peak_rank) |> 
+            group_by(song,artist) |> 
+            summarise(weeks_in_top_20=n()) |> 
+            arrange(desc(weeks_in_top_20)) 
+datatable(top20,caption = "Longest  staying songs in  the Top 20")
+```
+
+### Song progression
+
+```{r}
+library(shinydashboard)
+
+fluidRow(
+  column(width=12,
+    selectInput("songID","Select song",unique(bb16$song))),
+  column(width=12,
+    renderPlotly({
+           song_progress_plot <- bb16 |>
+             filter(song==input$songID) |>
+             ggplot(aes(x=date,y=rank,group = artist))+
+             geom_line(col="#0072B2")+
+             geom_point(fill="#0072B2")+
+             labs(x="Date",y="Rank",
+                  title = paste("Chart Progression-",input$songID))+
+             scale_y_reverse(limits=c(max(bb16$rank),
+                             min(bb16$rank)))
+           song_progress_plot |> 
+             ggplotly() |> config(displayModeBar=FALSE)
+           })
+        )
+)
+
+
+```
+
+# Page one {data-orientation="rows" data-navmenu="Statistics"}
+
+## Row
+
+### 
+
+```{r}
+bb16$song |> 
+  unique() |> 
+  length() |> 
+flexdashboard::valueBox(caption = "listed songs",color = alpha("#E69F00",0.8))
+```
+
+### 
+
+```{r}
+# Drake has the most entries on the Billboard charts
+bb16 |>
+  filter(str_detect(artist,"Drake")) |> 
+  distinct(song) |> 
+  nrow() |> 
+flexdashboard::valueBox(caption = paste("Most songs-Drake"),color = alpha("#009E73",0.8))
+```
+
+### 
+
+```{r}
+max_no1 <- bb16 |> 
+  select(rank,artist,song) |> 
+  filter(rank==1) |> 
+  group_by(artist) |> 
+  summarise(N=n()) |> 
+  arrange(desc(N)) |> 
+  nth(n=1)
+
+flexdashboard::valueBox(value = max_no1$N,
+         caption = paste("Most weeks at No.1-",max_no1$artist),color = alpha("#CC79A7",0.8))
+  
+```
+
+## Row {.tabset .tabset-fade}
+
+### Listed songs
+
+```{r}
+renderDataTable({
+  bb16 |> 
+    select(artist, song) |> 
+    distinct() |> 
+    datatable()
+})
+```
+
+### Artists' songs
+
+```{r}
+renderPlotly({
+top_artists <- bb16 |> 
+  select(song,artist) |> 
+  distinct() |> 
+  group_by(artist) |> 
+  summarise(N=n()) |> 
+  arrange(desc(N)) |> 
+  slice_head(n=10) |> 
+  ggplot(aes(x=reorder(artist,N),y=N))+
+  geom_bar(stat="identity",col="#000000",
+           fill = alpha("#009E73",0.67))+
+  labs(x="Artist",y="songs",
+       title = paste("Number of songs on Hot 100 2016 charts\nTop 10 artists (singles)"))
+ggplotly(top_artists) |> config(displayModeBar=FALSE)
+}
+)
+
+```
+
+### Number 1
+
+```{r}
+renderPlotly({
+number_one <- bb16 |> 
+  filter(rank == 1) |> 
+  select(artist, song) |> 
+  group_by(song, artist) |> 
+  summarise(Weeks_at_number_one = n()) |> 
+  arrange(desc(Weeks_at_number_one)) |> 
+  ggplot(aes(x=reorder(song, Weeks_at_number_one),y=Weeks_at_number_one,group = artist))+
+    geom_bar(stat="identity",col="#000000",
+             fill = alpha("#CC79A7",0.67))+
+  labs(x="Song",y="no. of weeks",
+       title = paste("Weeks spent at #1"))
+  }
+)
+```
+
+# Page two {data-orientation="rows" data-navmenu="Statistics"}
+
+## Row
+
+### 
+
+```{r}
+woc<<-bb16 |> 
+  group_by(song,artist) |> 
+  summarise(Weeks_on_Chart=max(weeks_on_board)) |> 
+  arrange(desc(Weeks_on_Chart))
+
+woc$song |> nth(n=1) |> 
+flexdashboard::valueBox(caption = "Longest duration on chart",
+                        color = alpha("#88B04B",0.8))
+```
+
+### 
+
+```{r}
+woc$artist |> nth(n=1) |> 
+flexdashboard::valueBox(caption = "Artist",
+                        color = alpha("#9467BD",0.8))
+```
+
+### 
+
+```{r}
+woc$Weeks_on_Chart |> nth(n=1) |> 
+flexdashboard::valueBox(caption = "Weeks on chart",
+                        color = alpha("#D62728",0.5))
+```
+
+## Row
+
+### 
+
+```{r}
+long_duration <- ggplot(woc |> head(n=10),aes(x=reorder(song,Weeks_on_Chart),y=Weeks_on_Chart,group = artist))+
+  geom_bar(stat = "identity",col="#000",fill=alpha("#D55E00",0.7))+
+  labs(y="Number of weeks",x="Song",
+       title="Longest Duration on Chart (Top 10)")+
+  coord_flip()
+long_duration |> ggplotly() |> config(displayModeBar=FALSE)
+
+```
+
+# Page three {data-orientation="rows" data-navmenu="Statistics"}
+
+## Row
+
+### 
+
+```{r}
+bb16 |>  
+  filter(is.na(last_week_rank)) |>
+  filter(weeks_on_board==1) |> 
+  select(artist,song) |>
+  distinct() |> 
+  nrow() |> 
+flexdashboard::valueBox(caption = "New Chart Entries",color = alpha("#92A8D1",0.8))
+
+```
+
+### 
+
+```{r}
+new_entries <- bb16 |>  
+  filter(is.na(last_week_rank)) |>
+  filter(weeks_on_board==1) |>
+  group_by(date) |> 
+  summarise(New_entries_per_week=n()) |> 
+  arrange(date) |>
+  mutate(Week=seq(1,53,1)) |> 
+  relocate(Week, .before = date)
+
+# new_entries |> 
+#   filter(New_entries_per_week==max(New_entries_per_week)) |> 
+#   select(date) #21st May & 17th  December
+
+new_entries$New_entries_per_week |> max() |> 
+flexdashboard::valueBox(caption = paste("Highest number of new entries - 21st May & 17th December") , 
+color = alpha("#E69F00", 0.8))
+
+```
+
+### 
+
+```{r}
+new_entries$New_entries_per_week |> mean() |> ceiling() |> 
+flexdashboard::valueBox(caption = "Average number of new entries per week", color = alpha("#FF6F61", 0.8))
+
+```
+
+## Row {.tabset .tabset-fade}
+
+### New Entries
+
+```{r}
+bb16 |>  
+  filter(is.na(last_week_rank)) |>
+  filter(weeks_on_board==1) |> 
+  select(!last_week_rank) |> 
+  datatable()
+```
+
+### Weekly new entries
+
+```{r}
+new_entries |> 
+  select(date,New_entries_per_week) |> 
+  dygraph()
+```
+
+# Page four {data-orientation="columns" data-navmenu="Statistics"}
+
+## Column {data-width="45%"}
+
+### 
+
+```{r}
+selectInput("artist_monthID","Select month",choices =   
+              c("January"=1,"February"=2,"March"=3,
+                "April"=4,"May"=5,"June"=6,
+                "July"=7,"August"=8,"September"=9,
+                "October"=10,"November"=11,"December"=12))
+```
+
+Artist of the month is determined by the cumulative song appearances on the chart at the end of each month
+
+### 
+
+```{r}
+artist_of_the_month <<- bb16 |> 
+  group_by(artist,month) |> 
+  summarise(Count=n()) |>
+  arrange(desc(Count)) |>
+  arrange(month)
+  
+flexdashboard::renderValueBox({
+best_artist <- artist_of_the_month |> 
+  filter(month==input$artist_monthID) |> 
+  head(1) 
+
+flexdashboard::valueBox(best_artist$artist,
+                caption = paste("Artist of the month -",input$artist_monthID),
+                color = alpha("#17BECF",0.6))
+  
+  }
+)
+```
+
+### 
+
+```{r}
+flexdashboard::renderValueBox({
+best_artist <- artist_of_the_month |> 
+  filter(month==input$artist_monthID) |> 
+  head(1) 
+
+flexdashboard::valueBox(best_artist$Count,
+                caption = paste("Cumulative song appearances"),
+                color = alpha("#1f77b4",0.6))
+  
+  }
+)
+```
+
+## Column {data-width="55%"}
+
+### The Weeknd
+
+```{r}
+include_graphics("Abel.jpg")
+```
+ 
+
+
+### 
+
+```{r}
+renderDataTable({
+best_artist <- artist_of_the_month |> 
+  filter(month==input$artist_monthID) |> 
+  head(1)
+
+bb16 |> 
+  filter(artist %in% best_artist$artist) |>
+  filter(month==input$artist_monthID) |> 
+  group_by(song) |> 
+  summarise(rank_on_chart=median(rank)) |>
+  mutate(Rank=rank(rank_on_chart,ties.method = "random")) |>
+  select(-rank_on_chart) |> 
+  arrange(Rank) |> 
+  datatable()
+})
+```
+
+# Page five {data-orientation="rows" data-navmenu="Statistics"}
+
+## Row
+
+### 
+
+```{r}
+summer_df <- bb16 |> 
+  filter(month %in% c(6,7,8)) |> 
+  group_by(song,artist) |> 
+  summarise(Rank = median(rank)) |> 
+  ungroup() |> 
+  mutate(summer_rank =  rank(Rank,ties.method = "random")) |> 
+  select(-Rank) |> 
+  arrange(summer_rank)
+
+summer_df$song |> 
+  head(1) |> 
+flexdashboard::valueBox(caption = "Song of the summer",
+                        color = alpha("#F0E442",0.75))
+```
+
+### 
+
+```{r}
+summer_df$artist |> 
+  head(1) |> 
+flexdashboard::valueBox(caption = "Artist",
+                        color = alpha("#FF6F61",0.75))
+```
+
+## Row
+
+### 
+
+```{r}
+summer_df |> 
+  head(n=10) |> 
+  relocate(summer_rank,.before = song) |> 
+  as.data.frame()
+```
+
+> Top 10 summer jams
+
+### 
+
+```{r}
+include_graphics("Halsey.jpg")
+```
+
+> Halsey
+
+
+# Socials {data-orientation="rows"}
+
+## Row
+
+### 
+
+```{r}
+flexdashboard::valueBox(value = "Github", color = alpha("#000000", 0.8), icon = "fa-github", href = "https://github.com/bugameG")
+```
+
+### 
+
+```{r}
+flexdashboard::valueBox(value = "X", color = alpha("#000000", 0.8),
+icon = "fa-twitter", href = "https://x.com/bugameG")
+```
+
+### 
+
+```{r}
+flexdashboard::valueBox(value = "Linkedin", color = alpha("royalblue4", 0.9), icon = "fa-linkedin", href = "www.linkedin.com/in/gift-bugame-pamba")
+```
+
+## Row
+
+### 
+
+```{r}
+flexdashboard::valueBox(value = "Profile", color = alpha("grey6", 0.7), icon = "fa-briefcase", href = "https://datascienceportfol.io/giftpamba")
+```
+
+### 
+
+```{r}
+flexdashboard::valueBox(value = "Yahoo", color = alpha("#6001D2", 1.0), icon = "fa-envelope", href = "giftbugame@yahoo.com")
+```
+
+### 
+
+```{r}
+flexdashboard::valueBox(value = "Kaggle", color = alpha("#20BEFF", 0.8), icon = "fa-globe", href = "https://www.kaggle.com/giftpamba")
+```
+
+## Row
+
+### 
+
+```{r}
+flexdashboard::valueBox(value = "Cell", color = alpha("#43B02A", 1.0), caption = "+254 757597966", icon = "fa-phone")
+```
+
+## Row
+
+### References
+
++ [https://www.kaggle.com/datasets/dhruvildave/billboard-the-hot-100-songs](https://www.kaggle.com/datasets/dhruvildave/billboard-the-hot-100-songs)
+
